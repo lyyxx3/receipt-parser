@@ -1,1 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Receipt Parser</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Receipt Parser (mobile)</h1>
+
+    <label class="upload">
+      <input id="fileInput" type="file" accept="image/*" capture="environment">
+      <span>Select or take a photo</span>
+    </label>
+
+    <progress id="ocrProgress" value="0" max="1" style="width:100%; display:none"></progress>
+
+    <pre id="ocrText" class="output"></pre>
+
+    <div id="parsed" class="card" style="display:none">
+      <p><strong>Establishment:</strong> <span id="est"></span></p>
+      <p><strong>Date:</strong> <span id="dt"></span></p>
+      <p><strong>Price:</strong> <span id="pr"></span></p>
+      <p><strong>Details:</strong> <span id="de"></span></p>
+      <button id="saveBtn">Save to Google Sheet</button>
+    </div>
+
+    <p id="status"></p>
+  </main>
+
+  <!-- Tesseract.js from CDN -->
+  <script src="https://unpkg.com/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+  <script src="/main.js"></script>
+</body>
+</html>
 
