@@ -1,63 +1,74 @@
-import fetch from 'node-fetch';
 import { google } from 'googleapis';
 
 export default async function handler(req, res) {
   try {
-    const { imageBase64 } = JSON.parse(req.body);
-
-    if (!imageBase64) {
-      return res.status(400).json({ error: 'No image provided' });
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed, use POST' });
     }
 
-    // 1. Call OCR.space API
+    let data;
+    if (typeof req.body === 'string') {
+      data = JSON.parse(req.body);
+    } else {
+      data = req.body;
+    }
+
+    const { imageBase64 } = data;
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'No imageBase64 in request body' });
+    }
+
     const ocrApiKey = process.env.OCR_SPACE_API_KEY;
-    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
+    if (!ocrApiKey) throw new Error('OCR_SPACE_API_KEY env var missing');
+
+    // Call OCR.space API using native fetch
+    const ocrRes = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
-      headers: {
-        apikey: ocrApiKey
-      },
+      headers: { apikey: ocrApiKey },
       body: new URLSearchParams({
         base64Image: `data:image/jpeg;base64,${imageBase64}`,
-        language: 'eng'
-      })
+        language: 'eng',
+      }),
     });
 
-    const ocrResult = await ocrResponse.json();
-    const parsedText = ocrResult?.ParsedResults?.[0]?.ParsedText || '';
-
-    if (!parsedText) {
-      return res.status(500).json({ error: 'OCR failed' });
+    const ocrJson = await ocrRes.json();
+    if (ocrJson.IsErroredOnProcessing) {
+      throw new Error('OCR API error: ' + (ocrJson.ErrorMessage?.join('; ') || 'Unknown error'));
     }
 
-    // 2. Extract info via regex
+    const parsedText = ocrJson?.ParsedResults?.[0]?.ParsedText || '';
+    if (!parsedText) {
+      throw new Error('No parsed text from OCR');
+    }
+
+    // Simple parsing: merchant = first line, date & price via regex
     const merchant = parsedText.split('\n')[0]?.trim() || 'Unknown';
     const dateMatch = parsedText.match(/\b\d{2}[-\/]\d{2}[-\/]\d{4}\b/);
     const priceMatch = parsedText.match(/\b\d+\.\d{2}\b/);
-
     const date = dateMatch ? dateMatch[0] : 'Unknown';
     const price = priceMatch ? priceMatch[0] : 'Unknown';
 
-    // 3. Append to Google Sheets
+    // Google Sheets append
+    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+    if (!creds.client_email) throw new Error('Invalid Google service account JSON');
+
     const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      credentials: creds,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
     const sheets = google.sheets({ version: 'v4', auth });
+
     await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
       range: 'Sheet1!A:C',
       valueInputOption: 'RAW',
-      requestBody: {
-        values: [[merchant, date, price]]
-      }
+      requestBody: { values: [[merchant, date, price]] },
     });
 
-    // 4. Return success
-    res.status(200).json({ merchant, date, price });
-
+    return res.status(200).json({ merchant, date, price });
   } catch (error) {
-    console.error('Error in append.js:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Error in /api/append:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 }
