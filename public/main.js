@@ -1,48 +1,31 @@
-async function parseReceiptText(text) {
-    const response = await fetch('/api/parser', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-    });
-
-    if (!response.ok) {
-        throw new Error(`Parser API error: ${response.status}`);
+document.getElementById('receiptInput').addEventListener('change', async function () {
+    const file = this.files[0];
+    if (!file) {
+        alert("Please select a file first.");
+        return;
     }
 
-    return await response.json();
-}
+    const formData = new FormData();
+    formData.append('file', file);
 
-document.getElementById('fileInput').addEventListener('change', async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const { createWorker } = Tesseract;
-    const worker = await createWorker('eng');
-
-    const { data } = await worker.recognize(file);
-    console.log("OCR Output:", data.text);
+    console.log("Uploading file to /api/append ...");
 
     try {
-        // 1. Send OCR text to Python parser
-        const parsedData = await parseReceiptText(data.text);
-        console.log("Parsed Receipt:", parsedData);
-
-        // 2. Append structured data to Google Sheets
-        const appendRes = await fetch('/api/append', {
+        const res = await fetch('/api/append', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(parsedData)
+            body: formData
         });
 
-        if (!appendRes.ok) {
-            throw new Error(`Append API error: ${appendRes.status}`);
+        const data = await res.json();
+        console.log("Server response:", data);
+
+        if (res.ok) {
+            alert(`✅ Upload successful: ${JSON.stringify(data)}`);
+        } else {
+            alert(`❌ Upload failed: ${data.error || "Unknown error"}`);
         }
-
-        alert("Receipt data saved successfully!");
-    } catch (error) {
-        console.error(error);
-        alert("Error processing receipt");
+    } catch (err) {
+        console.error("Fetch error:", err);
+        alert("❌ Could not upload file. Check console for details.");
     }
-
-    await worker.terminate();
 });
