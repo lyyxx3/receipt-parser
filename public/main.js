@@ -1,31 +1,50 @@
-document.getElementById('receiptInput').addEventListener('change', async function () {
-    const file = this.files[0];
-    if (!file) {
-        alert("Please select a file first.");
+document.getElementById("upload-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const fileInput = document.getElementById("receipt");
+    if (!fileInput.files.length) {
+        alert("Please select a receipt image first.");
         return;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
+    const file = fileInput.files[0];
+    const reader = new FileReader();
 
-    console.log("Uploading file to /api/append ...");
+    reader.onload = async () => {
+        const base64Image = reader.result.split(",")[1]; // remove prefix
 
-    try {
-        const res = await fetch('/api/append', {
-            method: 'POST',
-            body: formData
-        });
+        try {
+            // Step 1: Send image to parser.py
+            const parserRes = await fetch("/api/parser.py", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64Image })
+            });
 
-        const data = await res.json();
-        console.log("Server response:", data);
+            if (!parserRes.ok) throw new Error("Parser API error");
 
-        if (res.ok) {
-            alert(`✅ Upload successful: ${JSON.stringify(data)}`);
-        } else {
-            alert(`❌ Upload failed: ${data.error || "Unknown error"}`);
+            const parsedData = await parserRes.json();
+            console.log("Parsed receipt data:", parsedData);
+
+            // Step 2: Send parsed data to append.js (Google Sheets)
+            const appendRes = await fetch("/api/append.js", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(parsedData)
+            });
+
+            if (!appendRes.ok) throw new Error("Append API error");
+
+            const sheetResponse = await appendRes.json();
+            console.log("Google Sheets response:", sheetResponse);
+
+            alert("✅ Receipt uploaded and saved successfully!");
+
+        } catch (err) {
+            console.error(err);
+            alert("❌ Error processing receipt. Check console for details.");
         }
-    } catch (err) {
-        console.error("Fetch error:", err);
-        alert("❌ Could not upload file. Check console for details.");
-    }
+    };
+
+    reader.readAsDataURL(file);
 });
