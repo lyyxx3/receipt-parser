@@ -1,17 +1,27 @@
-<!DOCTYPE html>
+a<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receipt Parser</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Receipt Parser</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-    <h1>Upload Your Receipt</h1>
+  <div class="container">
+    <h1>Receipt Parser</h1>
 
-    <input type="file" id="file-input" accept="image/*">
-    <p>Select a receipt image and it will be processed automatically.</p>
+    <input type="file" id="file-input" accept="image/*" />
 
-    <script src="main.js"></script>
+    <div id="status" class="status">Select a receipt image to start.</div>
+
+    <div id="result" class="result" style="display:none;">
+      <h2>Parsed Receipt Info</h2>
+      <p><strong>Merchant:</strong> <span id="merchant"></span></p>
+      <p><strong>Date:</strong> <span id="date"></span></p>
+      <p><strong>Total Price:</strong> <span id="price"></span></p>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
 </body>
 </html>
