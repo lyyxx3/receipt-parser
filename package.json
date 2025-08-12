@@ -1,8 +1,11 @@
 {
   "name": "receipt-parser",
   "version": "1.0.0",
-  "type": "module",
   "engines": {
     "node": "18.x"
+  },
+  "dependencies": {
+    "@google-cloud/local-auth": "^2.1.0",
+    "googleapis": "^131.0.0"
   }
 }
