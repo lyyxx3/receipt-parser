@@ -1,56 +1,63 @@
-import { google } from "googleapis";
+import fetch from 'node-fetch';
+import { google } from 'googleapis';
 
 export default async function handler(req, res) {
-    if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method Not Allowed" });
+  try {
+    const { imageBase64 } = JSON.parse(req.body);
+
+    if (!imageBase64) {
+      return res.status(400).json({ error: 'No image provided' });
     }
 
-    try {
-        const { store, date, total, items } = req.body;
+    // 1. Call OCR.space API
+    const ocrApiKey = process.env.OCR_SPACE_API_KEY;
+    const ocrResponse = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      headers: {
+        apikey: ocrApiKey
+      },
+      body: new URLSearchParams({
+        base64Image: `data:image/jpeg;base64,${imageBase64}`,
+        language: 'eng'
+      })
+    });
 
-        if (!store || !date || !total) {
-            return res.status(400).json({ error: "Missing required fields" });
-        }
+    const ocrResult = await ocrResponse.json();
+    const parsedText = ocrResult?.ParsedResults?.[0]?.ParsedText || '';
 
-        // Google Sheets API authentication
-        const auth = new google.auth.GoogleAuth({
-            credentials: {
-                type: process.env.GOOGLE_TYPE,
-                project_id: process.env.GOOGLE_PROJECT_ID,
-                private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
-                private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-                client_email: process.env.GOOGLE_CLIENT_EMAIL,
-                client_id: process.env.GOOGLE_CLIENT_ID,
-                universe_domain: process.env.GOOGLE_UNIVERSE_DOMAIN
-            },
-            scopes: ["https://www.googleapis.com/auth/spreadsheets"]
-        });
-
-        const sheets = google.sheets({ version: "v4", auth });
-
-        // Format the row to add
-        const newRow = [
-            new Date().toLocaleString("en-MY"), // timestamp
-            store,
-            date,
-            total,
-            items && items.length ? items.join(", ") : ""
-        ];
-
-        // Append to Google Sheet
-        await sheets.spreadsheets.values.append({
-            spreadsheetId: process.env.SHEET_ID,
-            range: "Sheet1!A:E",
-            valueInputOption: "USER_ENTERED",
-            requestBody: {
-                values: [newRow]
-            }
-        });
-
-        res.status(200).json({ message: "Data appended successfully" });
-
-    } catch (err) {
-        console.error("Google Sheets append error:", err);
-        res.status(500).json({ error: "Failed to append data" });
+    if (!parsedText) {
+      return res.status(500).json({ error: 'OCR failed' });
     }
+
+    // 2. Extract info via regex
+    const merchant = parsedText.split('\n')[0]?.trim() || 'Unknown';
+    const dateMatch = parsedText.match(/\b\d{2}[-\/]\d{2}[-\/]\d{4}\b/);
+    const priceMatch = parsedText.match(/\b\d+\.\d{2}\b/);
+
+    const date = dateMatch ? dateMatch[0] : 'Unknown';
+    const price = priceMatch ? priceMatch[0] : 'Unknown';
+
+    // 3. Append to Google Sheets
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: 'Sheet1!A:C',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: [[merchant, date, price]]
+      }
+    });
+
+    // 4. Return success
+    res.status(200).json({ merchant, date, price });
+
+  } catch (error) {
+    console.error('Error in append.js:', error);
+    res.status(500).json({ error: error.message });
+  }
 }
