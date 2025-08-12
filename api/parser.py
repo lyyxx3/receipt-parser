@@ -1,60 +1,84 @@
+import json
 import re
-from flask import Request
+import base64
+import requests
+from io import BytesIO
+from PIL import Image, ImageEnhance, ImageFilter
 
-def parse_receipt_text(text):
-    # --- Store Name ---
-    # Assume store name is the first line of text with letters (and maybe & or -)
-    store_pattern = re.compile(r"^[A-Z][A-Z\s\-\&]{2,}$", re.MULTILINE)
-    store_match = store_pattern.search(text)
-    store_name = store_match.group(0).strip() if store_match else None
+OCR_API_KEY = "K86891758288957"
+OCR_URL = "https://vision.googleapis.com/v1/images:annotate"
 
-    # --- Date ---
-    date_pattern = re.compile(
-        r"\b(\d{1,2}[\/\-\s]\d{1,2}[\/\-\s]\d{2,4}|\d{4}[\/\-\s]\d{1,2}[\/\-\s]\d{1,2})\b"
-    )
-    date_match = date_pattern.search(text)
-    date = date_match.group(0) if date_match else None
+def preprocess_image(image_bytes):
+    """Enhance receipt image before OCR for better accuracy."""
+    img = Image.open(BytesIO(image_bytes)).convert("L")  # grayscale
+    img = img.filter(ImageFilter.SHARPEN)
+    enhancer = ImageEnhance.Contrast(img)
+    img = enhancer.enhance(2)  # boost contrast
+    output = BytesIO()
+    img.save(output, format="JPEG")
+    return output.getvalue()
 
-    # --- Totals ---
-    total_pattern = re.compile(r"(?:Grand\s*Total|Total\s*Amount|Total)\s*[:\-]?\s*\$?\s*(\d+\.\d{2})", re.IGNORECASE)
-    subtotal_pattern = re.compile(r"(?:Sub\s*Total|Subtotal)\s*[:\-]?\s*\$?\s*(\d+\.\d{2})", re.IGNORECASE)
-    tax_pattern = re.compile(r"(?:Tax|GST|VAT)\s*[:\-]?\s*\$?\s*(\d+\.\d{2})", re.IGNORECASE)
+def ocr_google(image_bytes):
+    """Send image to Google Vision API and return extracted text."""
+    img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    payload = {
+        "requests": [
+            {
+                "image": {"content": img_b64},
+                "features": [{"type": "TEXT_DETECTION"}]
+            }
+        ]
+    }
+    response = requests.post(f"{OCR_URL}?key={OCR_API_KEY}", json=payload)
+    result = response.json()
+    try:
+        return result["responses"][0]["fullTextAnnotation"]["text"]
+    except KeyError:
+        return ""
 
-    total = float(total_pattern.search(text).group(1)) if total_pattern.search(text) else None
-    subtotal = float(subtotal_pattern.search(text).group(1)) if subtotal_pattern.search(text) else None
-    tax = float(tax_pattern.search(text).group(1)) if tax_pattern.search(text) else None
+def extract_receipt_info(text):
+    """Extract store name, date, total, and items from OCR text."""
+    store_name = text.split("\n")[0].strip()
+    
+    date_match = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", text)
+    date = date_match.group(1) if date_match else "Unknown"
 
-    # --- Items ---
-    # Matches: "ItemName  2  5.99" or "ItemName  $5.99"
-    item_pattern = re.compile(
-        r"^([A-Za-z0-9\s\-\&]+?)\s+(\d+)?\s*\$?(\d+\.\d{2})$",
-        re.MULTILINE
-    )
+    total_match = re.search(r"TOTAL\s*[\$:RM]*\s*([0-9]+(?:\.[0-9]{2})?)", text, re.IGNORECASE)
+    total = total_match.group(1) if total_match else "Unknown"
 
     items = []
-    for match in item_pattern.finditer(text):
-        name = match.group(1).strip()
-        qty = int(match.group(2)) if match.group(2) else 1
-        price = float(match.group(3))
-        items.append({
-            "product": name,
-            "quantity": qty,
-            "price": price
-        })
+    for line in text.split("\n"):
+        if re.match(r".+\s+\d+\.\d{2}$", line.strip()):
+            items.append(line.strip())
 
     return {
-        "store_name": store_name,
+        "store": store_name,
         "date": date,
-        "subtotal": subtotal,
-        "tax": tax,
         "total": total,
         "items": items
     }
 
-def handler(request: Request):
-    data = request.get_json()
-    if not data or "text" not in data:
-        return {"error": "Missing 'text' field"}, 400
+def handler(request, context):
+    try:
+        body = json.loads(request.body)
+        image_data = base64.b64decode(body.get("image", ""))
 
-    parsed_data = parse_receipt_text(data["text"])
-    return parsed_data, 200
+        # Step 1: Preprocess image
+        processed_img = preprocess_image(image_data)
+
+        # Step 2: OCR
+        ocr_text = ocr_google(processed_img)
+
+        # Step 3: Extract structured info
+        parsed_data = extract_receipt_info(ocr_text)
+
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps(parsed_data)
+        }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }
