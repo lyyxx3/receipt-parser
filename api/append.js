@@ -49,7 +49,7 @@ export default async function handler(req, res) {
     const price = priceMatch ? priceMatch[0] : 'Unknown';
 
     // Google Sheets append
-    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
     if (!creds.client_email) throw new Error('Invalid Google service account JSON');
 
     const auth = new google.auth.GoogleAuth({
