@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/parser.py": {
+      "runtime": "python3.9"
+    }
+  }
+}
