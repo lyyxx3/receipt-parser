@@ -1,37 +1,44 @@
 export const config = {
-    api: {
-        bodyParser: false, // Required for file uploads
-    },
+    api: { bodyParser: false },
 };
 
 import formidable from "formidable";
-import fs from "fs";
+import { execFile } from "child_process";
+import path from "path";
 
 export default async function handler(req, res) {
-    console.log("📩 Request received:", req.method);
-
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method Not Allowed' });
+    if (req.method !== "POST") {
+        return res.status(405).json({ error: "Method Not Allowed" });
     }
 
     const form = formidable({ multiples: false });
 
-    form.parse(req, async (err, fields, files) => {
+    form.parse(req, (err, fields, files) => {
         if (err) {
-            console.error("❌ Form parse error:", err);
-            return res.status(500).json({ error: "Error parsing form data" });
+            return res.status(500).json({ error: "Error parsing form" });
         }
 
-        console.log("📄 Uploaded file info:", files.file);
+        const filePath = files.file.filepath;
+        const pythonPath = path.join(process.cwd(), "api", "parser.py");
 
-        // Temporary: Just read the file name
-        const filePath = files.file.filepath || files.file[0]?.filepath;
-        const fileName = files.file.originalFilename || files.file[0]?.originalFilename;
+        execFile(
+            "python3",
+            [pythonPath, filePath],
+            { env: { ...process.env } }, // Pass API key
+            (error, stdout, stderr) => {
+                if (error) {
+                    console.error(stderr);
+                    return res.status(500).json({ error: "Python script failed" });
+                }
 
-        console.log(`✅ File received: ${fileName}`);
-
-        // You can now send this to Google Sheets or process it with Python
-
-        res.status(200).json({ message: "File received", fileName });
+                try {
+                    const parsedData = JSON.parse(stdout);
+                    res.status(200).json(parsedData);
+                } catch (parseError) {
+                    console.error(parseError);
+                    res.status(500).json({ error: "Invalid JSON from parser" });
+                }
+            }
+        );
     });
 }
