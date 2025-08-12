@@ -1,44 +1,56 @@
-export const config = {
-    api: { bodyParser: false },
-};
-
-import formidable from "formidable";
-import { execFile } from "child_process";
-import path from "path";
+import { google } from "googleapis";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") {
         return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    const form = formidable({ multiples: false });
+    try {
+        const { store, date, total, items } = req.body;
 
-    form.parse(req, (err, fields, files) => {
-        if (err) {
-            return res.status(500).json({ error: "Error parsing form" });
+        if (!store || !date || !total) {
+            return res.status(400).json({ error: "Missing required fields" });
         }
 
-        const filePath = files.file.filepath;
-        const pythonPath = path.join(process.cwd(), "api", "parser.py");
+        // Google Sheets API authentication
+        const auth = new google.auth.GoogleAuth({
+            credentials: {
+                type: process.env.GOOGLE_TYPE,
+                project_id: process.env.GOOGLE_PROJECT_ID,
+                private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
+                private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+                client_email: process.env.GOOGLE_CLIENT_EMAIL,
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                universe_domain: process.env.GOOGLE_UNIVERSE_DOMAIN
+            },
+            scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+        });
 
-        execFile(
-            "python3",
-            [pythonPath, filePath],
-            { env: { ...process.env } }, // Pass API key
-            (error, stdout, stderr) => {
-                if (error) {
-                    console.error(stderr);
-                    return res.status(500).json({ error: "Python script failed" });
-                }
+        const sheets = google.sheets({ version: "v4", auth });
 
-                try {
-                    const parsedData = JSON.parse(stdout);
-                    res.status(200).json(parsedData);
-                } catch (parseError) {
-                    console.error(parseError);
-                    res.status(500).json({ error: "Invalid JSON from parser" });
-                }
+        // Format the row to add
+        const newRow = [
+            new Date().toLocaleString("en-MY"), // timestamp
+            store,
+            date,
+            total,
+            items && items.length ? items.join(", ") : ""
+        ];
+
+        // Append to Google Sheet
+        await sheets.spreadsheets.values.append({
+            spreadsheetId: process.env.SHEET_ID,
+            range: "Sheet1!A:E",
+            valueInputOption: "USER_ENTERED",
+            requestBody: {
+                values: [newRow]
             }
-        );
-    });
+        });
+
+        res.status(200).json({ message: "Data appended successfully" });
+
+    } catch (err) {
+        console.error("Google Sheets append error:", err);
+        res.status(500).json({ error: "Failed to append data" });
+    }
 }
