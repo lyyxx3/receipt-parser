@@ -1,23 +1,35 @@
-document.getElementById('receiptInput').addEventListener('change', async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+document.addEventListener("DOMContentLoaded", () => {
+    const fileInput = document.getElementById("file-input");
 
-  const reader = new FileReader();
-  reader.onload = async function(e) {
-    const base64 = e.target.result.split(',')[1];
-
-    const response = await fetch('/api/append', {
-      method: 'POST',
-      body: JSON.stringify({ imageBase64: base64 })
-    });
-
-    const result = await response.json();
-    if (result.error) {
-      alert('Error: ' + result.error);
-    } else {
-      alert(`✅ Receipt added:\nMerchant: ${result.merchant}\nDate: ${result.date}\nPrice: ${result.price}`);
+    if (!fileInput) {
+        console.error("❌ file-input element not found in DOM.");
+        return;
     }
-  };
 
-  reader.readAsDataURL(file);
+    fileInput.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            // Send to backend API
+            const response = await fetch("/api/append", {
+                method: "POST",
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log("✅ Server response:", result);
+            alert("✅ Receipt processed and added to Google Sheets!");
+        } catch (error) {
+            console.error("❌ Error uploading file:", error);
+            alert("❌ Failed to process receipt. See console for details.");
+        }
+    });
 });
