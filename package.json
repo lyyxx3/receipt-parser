@@ -1,12 +1,9 @@
 {
   "name": "receipt-parser",
   "version": "1.0.0",
-  "engines": {
-    "node": "22.x"
-  },
+  "engines": { "node": "22.x" },
   "dependencies": {
-    "@google-cloud/local-auth": "^2.1.0",
-    "googleapis": "^131.0.0",
-    "formidable": "^3.5.1"
+    "googleapis": "^133.0.0",
+    "node-fetch": "^3.3.2"
   }
 }
