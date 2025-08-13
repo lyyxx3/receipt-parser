@@ -54,27 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-
-    ocrProgress.style.display = 'none';
-
-    const parsedFields = parseReceiptText(text);
-    lastParsed = { ...parsedFields, imageBase64 };
-
-    estEl.textContent = parsedFields.establishment || 'Unknown';
-    dtEl.textContent = parsedFields.date || 'Unknown';
-    prEl.textContent = parsedFields.price || 'Unknown';
-    parsed.style.display = 'block';
-
-    saveBtn.disabled = false;
-    status.textContent = 'Parsed. Review then tap "Save to Google Sheet".';
-
-  } catch (err) {
-    status.textContent = 'OCR failed: ' + err.message;
-    ocrProgress.style.display = 'none';
-  }
-});
-
-
   saveBtn.addEventListener('click', async () => {
     if (!lastParsed) return;
     status.textContent = 'Saving...';
