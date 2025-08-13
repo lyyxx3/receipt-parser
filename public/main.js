@@ -21,30 +21,59 @@ document.addEventListener('DOMContentLoaded', () => {
     ocrProgress.value = 0;
 
     try {
+      // Convert file to base64
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]); // remove data:mime;base64,
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+  
       const { data: { text } } = await Tesseract.recognize(file, 'eng', {
         logger: m => {
           if (m.progress) ocrProgress.value = m.progress;
         }
       });
-
+  
       ocrProgress.style.display = 'none';
-
+  
       const parsedFields = parseReceiptText(text);
-      lastParsed = parsedFields;
-
+      lastParsed = { ...parsedFields, imageBase64 };
+  
       estEl.textContent = parsedFields.establishment || 'Unknown';
       dtEl.textContent = parsedFields.date || 'Unknown';
       prEl.textContent = parsedFields.price || 'Unknown';
       parsed.style.display = 'block';
-
+  
       saveBtn.disabled = false;
-      status.textContent = '';
-
+      status.textContent = 'Parsed. Review then tap "Save to Google Sheet".';
+  
     } catch (err) {
       status.textContent = 'OCR failed: ' + err.message;
       ocrProgress.style.display = 'none';
     }
   });
+
+
+    ocrProgress.style.display = 'none';
+
+    const parsedFields = parseReceiptText(text);
+    lastParsed = { ...parsedFields, imageBase64 };
+
+    estEl.textContent = parsedFields.establishment || 'Unknown';
+    dtEl.textContent = parsedFields.date || 'Unknown';
+    prEl.textContent = parsedFields.price || 'Unknown';
+    parsed.style.display = 'block';
+
+    saveBtn.disabled = false;
+    status.textContent = 'Parsed. Review then tap "Save to Google Sheet".';
+
+  } catch (err) {
+    status.textContent = 'OCR failed: ' + err.message;
+    ocrProgress.style.display = 'none';
+  }
+});
+
 
   saveBtn.addEventListener('click', async () => {
     if (!lastParsed) return;
