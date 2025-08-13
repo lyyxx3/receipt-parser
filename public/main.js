@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
       parsed.style.display = 'block';
 
       saveBtn.disabled = false;
-      status.textContent = 'Parsed. Review then tap "Save to Google Sheet".';
+      status.textContent = '';
 
     } catch (err) {
       status.textContent = 'OCR failed: ' + err.message;
