@@ -78,7 +78,7 @@ export default async function handler(req, res) {
     }
 
     // Price candidates
-    const priceKeywords = /total|sum|amount|subtotal|grand|balance/i;
+    const priceKeywords = /total|sum|amount|grand|balance/i;
     let candidates = [];
 
     for (const line of lines) {
