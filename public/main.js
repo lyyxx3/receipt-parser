@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (d2) { date = d2[0]; break; }
     }
 
-    const keywords = ['total', 'subtotal', 'amount', 'balance', 'sum', 'payment', 'net'];
+    const keywords = ['total', 'amount', 'balance', 'sum', 'payment', 'net'];
     const priceCandidates = [];
     const moneyRe = /(?:RM|MYR|\$|USD|€|EUR|£|GBP)?\s*([0-9]{1,3}(?:[.,][0-9]{2})?)/ig;
 
