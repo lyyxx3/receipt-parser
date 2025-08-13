@@ -31,7 +31,7 @@ fileInput.addEventListener('change', async (e) => {
     });
 
     ocrProgress.style.display = 'none';
-    ocrText.textContent = text;
+    //ocrText.textContent = text;
 
     // parse
     const parsedFields = parseReceiptText(text);
