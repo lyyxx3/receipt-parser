@@ -39,10 +39,10 @@ export default async function handler(req, res) {
     const values = [
       [
         new Date().toISOString(),    // Timestamp
+        imageBase64,
         establishment || 'Unknown',
         date || 'Unknown',
         price || 'Unknown',
-        imageBase64
       ]
     ];
 
