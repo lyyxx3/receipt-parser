@@ -66,6 +66,7 @@ progress#ocrProgress {
   appearance: none;
   -webkit-appearance: none;
   background-color: #e0e0e0;
+  display: none; /* default hidden */
 }
 
 progress#ocrProgress::-webkit-progress-bar {
@@ -78,21 +79,12 @@ progress#ocrProgress::-webkit-progress-value {
   border-radius: 8px;
 }
 
-/* OCR raw text container */
-#ocrText {
-  background: #f0f0f0;
-  border: 1px solid #ccc;
-  padding: 12px;
-  border-radius: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  margin-bottom: 20px;
-  font-family: monospace;
-  font-size: 14px;
+/* Parsed section */
+#parsed {
+  margin-top: 20px;
+  display: none; /* default hidden */
 }
 
-/* Parsed info */
 #parsed p {
   margin: 0.4em 0;
   font-size: 1.05em;
@@ -130,11 +122,4 @@ progress#ocrProgress::-webkit-progress-value {
   color: #555;
   min-height: 1.5em;
   text-align: center;
-}
-
-/* Responsive */
-@media (max-width: 400px) {
-  main {
-    padding: 20px 15px;
-  }
 }
