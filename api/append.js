@@ -21,13 +21,16 @@ export default async function handler(req, res) {
     const ocrApiKey = process.env.OCR_SPACE_API_KEY;
     if (!ocrApiKey) throw new Error('OCR_SPACE_API_KEY env var missing');
 
-    // Call OCR.space API using native fetch
+    // Call OCR.space API with the preprocessed base64 image
     const ocrRes = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
       headers: { apikey: ocrApiKey },
       body: new URLSearchParams({
         base64Image: `data:image/jpeg;base64,${imageBase64}`,
         language: 'eng',
+        isTable: 'false',
+        scale: 'true',
+        OCREngine: '2'
       }),
     });
 
@@ -41,15 +44,69 @@ export default async function handler(req, res) {
       throw new Error('No parsed text from OCR');
     }
 
-    // Simple parsing: merchant = first line, date & price via regex
-    const merchant = parsedText.split('\n')[0]?.trim() || 'Unknown';
-    const dateMatch = parsedText.match(/\b\d{2}[-\/]\d{2}[-\/]\d{4}\b/);
-    const priceMatch = parsedText.match(/\b\d+\.\d{2}\b/);
-    const date = dateMatch ? dateMatch[0] : 'Unknown';
-    const price = priceMatch ? priceMatch[0] : 'Unknown';
+    // Parse lines
+    const lines = parsedText.split('\n').map(l => l.trim()).filter(Boolean);
 
-    // Google Sheets append
-    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
+    // Merchant: first line with mostly letters
+    let merchant = 'Unknown';
+    for (const line of lines.slice(0, 5)) {
+      const digitCount = (line.match(/\d/g) || []).length;
+      const letterCount = (line.match(/[A-Za-z]/g) || []).length;
+      if (letterCount > digitCount && letterCount > 3) {
+        merchant = line;
+        break;
+      }
+    }
+
+    // Date patterns
+    const datePatterns = [
+      /\b\d{2}[\/\-]\d{2}[\/\-]\d{4}\b/,       // 26/01/2015 or 26-01-2015
+      /\b\d{4}[\/\-]\d{2}[\/\-]\d{2}\b/,       // 2015/01/26 or 2015-01-26
+      /\b\d{1,2} \w{3} \d{4}\b/,                // 26 Jan 2015
+      /\b\w{3} \d{1,2}, \d{4}\b/,               // Jan 26, 2015
+    ];
+    let date = 'Unknown';
+    for (const pattern of datePatterns) {
+      for (const line of lines) {
+        const match = line.match(pattern);
+        if (match) {
+          date = match[0];
+          break;
+        }
+      }
+      if (date !== 'Unknown') break;
+    }
+
+    // Price candidates
+    const priceKeywords = /total|sum|amount|subtotal|grand|balance/i;
+    let candidates = [];
+
+    for (const line of lines) {
+      if (priceKeywords.test(line)) {
+        const nums = line.match(/\d+[.,]\d{2}/g);
+        if (nums) candidates.push(...nums);
+      }
+    }
+
+    // fallback: any decimal numbers in receipt
+    if (candidates.length === 0) {
+      for (const line of lines) {
+        const nums = line.match(/\d+[.,]\d{2}/g);
+        if (nums) candidates.push(...nums);
+      }
+    }
+
+    // Normalize numbers and pick max
+    let price = 'Unknown';
+    if (candidates.length > 0) {
+      const normalized = candidates.map(s => parseFloat(s.replace(',', '.'))).filter(n => !isNaN(n));
+      if (normalized.length > 0) {
+        price = normalized.reduce((a, b) => (b > a ? b : a), 0).toFixed(2);
+      }
+    }
+
+    // Save to Google Sheets
+    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
     if (!creds.client_email) throw new Error('Invalid Google service account JSON');
 
     const auth = new google.auth.GoogleAuth({
@@ -60,7 +117,7 @@ export default async function handler(req, res) {
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      spreadsheetId: process.env.SPREADSHEET_ID,
       range: 'Sheet1!A:C',
       valueInputOption: 'RAW',
       requestBody: { values: [[merchant, date, price]] },
