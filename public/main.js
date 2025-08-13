@@ -53,4 +53,73 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/append', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        bod
+        body: JSON.stringify(lastParsed)
+      });
+      const j = await res.json();
+      if (res.ok) {
+        status.textContent = 'Saved to Google Sheet ✅';
+      } else {
+        status.textContent = 'Save failed: ' + (j.error || res.statusText);
+      }
+    } catch (err) {
+      status.textContent = 'Save error: ' + err.message;
+    }
+  });
+
+  function parseReceiptText(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+    let establishment = '';
+    for (const line of lines) {
+      if (/^[\p{L}\s&'.-]+$/u.test(line)) {
+        establishment = line;
+        break;
+      }
+    }
+    if (!establishment) establishment = lines[0] || '';
+
+    let date = '';
+    const dateRe1 = /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/;
+    const dateRe2 = /\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/;
+    for (const l of lines) {
+      const d1 = l.match(dateRe1);
+      const d2 = l.match(dateRe2);
+      if (d1) { date = d1[0]; break; }
+      if (d2) { date = d2[0]; break; }
+    }
+
+    const keywords = ['total', 'subtotal', 'amount', 'balance', 'sum', 'payment', 'net'];
+    const priceCandidates = [];
+    const moneyRe = /(?:RM|MYR|\$|USD|€|EUR|£|GBP)?\s*([0-9]{1,3}(?:[.,][0-9]{2})?)/ig;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      let m;
+      while ((m = moneyRe.exec(line)) !== null) {
+        const rawMoney = m[0].trim();
+        let normalizedVal = parseFloat(rawMoney.replace(/[^\d.,]/g, '').replace(',', '.'));
+        if (isNaN(normalizedVal)) continue;
+
+        let score = 0;
+        for (const kw of keywords) {
+          if (line.includes(kw)) score += 10;
+        }
+        if (line.includes('cash')) score -= 20;
+        if (line.includes('change')) score -= 20;
+        if (line.includes('received')) score -= 20;
+
+        priceCandidates.push({val: normalizedVal, raw: rawMoney, score, index: i});
+      }
+    }
+
+    priceCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.val !== a.val) return b.val - a.val;
+      return b.index - a.index;
+    });
+
+    const price = priceCandidates.length ? priceCandidates[0].raw : '';
+
+    return { establishment, date, price };
+  }
+});
