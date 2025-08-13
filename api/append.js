@@ -106,7 +106,7 @@ export default async function handler(req, res) {
     }
 
     // Save to Google Sheets
-    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
     if (!creds.client_email) throw new Error('Invalid Google service account JSON');
 
     const auth = new google.auth.GoogleAuth({
@@ -117,7 +117,7 @@ export default async function handler(req, res) {
     const sheets = google.sheets({ version: 'v4', auth });
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
       range: 'Sheet1!A:C',
       valueInputOption: 'RAW',
       requestBody: { values: [[merchant, date, price]] },
