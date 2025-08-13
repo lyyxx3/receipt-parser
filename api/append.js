@@ -1,131 +1,66 @@
 import { google } from 'googleapis';
 
+const sheets = google.sheets('v4');
+
+// Load Google credentials from env vars
+const SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.replace(/\\n/g, '\n');
+
+if (!SHEET_ID || !GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
+  throw new Error('Missing Google Sheets API credentials in environment variables');
+}
+
+const auth = new google.auth.JWT(
+  GOOGLE_CLIENT_EMAIL,
+  null,
+  GOOGLE_PRIVATE_KEY,
+  ['https://www.googleapis.com/auth/spreadsheets']
+);
+
 export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed, POST only' });
+    return;
+  }
+
   try {
-    if (req.method !== 'POST') {
-      return res.status(405).json({ error: 'Method not allowed, use POST' });
-    }
+    const { establishment, date, price, imageBase64 } = req.body;
 
-    let data;
-    if (typeof req.body === 'string') {
-      data = JSON.parse(req.body);
-    } else {
-      data = req.body;
-    }
-
-    const { imageBase64 } = data;
     if (!imageBase64) {
-      return res.status(400).json({ error: 'No imageBase64 in request body' });
+      res.status(400).json({ error: 'No imageBase64 in request body' });
+      return;
     }
 
-    const ocrApiKey = process.env.OCR_SPACE_API_KEY;
-    if (!ocrApiKey) throw new Error('OCR_SPACE_API_KEY env var missing');
+    // Authenticate with Google Sheets API
+    await auth.authorize();
 
-    // Call OCR.space API with the preprocessed base64 image
-    const ocrRes = await fetch('https://api.ocr.space/parse/image', {
-      method: 'POST',
-      headers: { apikey: ocrApiKey },
-      body: new URLSearchParams({
-        base64Image: `data:image/jpeg;base64,${imageBase64}`,
-        language: 'eng',
-        isTable: 'false',
-        scale: 'true',
-        OCREngine: '2'
-      }),
-    });
-
-    const ocrJson = await ocrRes.json();
-    if (ocrJson.IsErroredOnProcessing) {
-      throw new Error('OCR API error: ' + (ocrJson.ErrorMessage?.join('; ') || 'Unknown error'));
-    }
-
-    const parsedText = ocrJson?.ParsedResults?.[0]?.ParsedText || '';
-    if (!parsedText) {
-      throw new Error('No parsed text from OCR');
-    }
-
-    // Parse lines
-    const lines = parsedText.split('\n').map(l => l.trim()).filter(Boolean);
-
-    // Merchant: first line with mostly letters
-    let merchant = 'Unknown';
-    for (const line of lines.slice(0, 5)) {
-      const digitCount = (line.match(/\d/g) || []).length;
-      const letterCount = (line.match(/[A-Za-z]/g) || []).length;
-      if (letterCount > digitCount && letterCount > 3) {
-        merchant = line;
-        break;
-      }
-    }
-
-    // Date patterns
-    const datePatterns = [
-      /\b\d{2}[\/\-]\d{2}[\/\-]\d{4}\b/,       // 26/01/2015 or 26-01-2015
-      /\b\d{4}[\/\-]\d{2}[\/\-]\d{2}\b/,       // 2015/01/26 or 2015-01-26
-      /\b\d{1,2} \w{3} \d{4}\b/,                // 26 Jan 2015
-      /\b\w{3} \d{1,2}, \d{4}\b/,               // Jan 26, 2015
+    // Prepare values to append
+    const values = [
+      [
+        new Date().toISOString(),    // Timestamp
+        establishment || 'Unknown',
+        date || 'Unknown',
+        price || 'Unknown',
+        imageBase64
+      ]
     ];
-    let date = 'Unknown';
-    for (const pattern of datePatterns) {
-      for (const line of lines) {
-        const match = line.match(pattern);
-        if (match) {
-          date = match[0];
-          break;
-        }
-      }
-      if (date !== 'Unknown') break;
-    }
 
-    // Price candidates
-    const priceKeywords = /total|sum|amount|grand|balance/i;
-    let candidates = [];
-
-    for (const line of lines) {
-      if (priceKeywords.test(line)) {
-        const nums = line.match(/\d+[.,]\d{2}/g);
-        if (nums) candidates.push(...nums);
-      }
-    }
-
-    // fallback: any decimal numbers in receipt
-    if (candidates.length === 0) {
-      for (const line of lines) {
-        const nums = line.match(/\d+[.,]\d{2}/g);
-        if (nums) candidates.push(...nums);
-      }
-    }
-
-    // Normalize numbers and pick max
-    let price = 'Unknown';
-    if (candidates.length > 0) {
-      const normalized = candidates.map(s => parseFloat(s.replace(',', '.'))).filter(n => !isNaN(n));
-      if (normalized.length > 0) {
-        price = normalized.reduce((a, b) => (b > a ? b : a), 0).toFixed(2);
-      }
-    }
-
-    // Save to Google Sheets
-    const creds = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
-    if (!creds.client_email) throw new Error('Invalid Google service account JSON');
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: creds,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const sheets = google.sheets({ version: 'v4', auth });
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: 'Sheet1!A:C',
+    const request = {
+      spreadsheetId: SHEET_ID,
+      range: 'Sheet1!A:E',  // Adjust sheet name and range if needed
       valueInputOption: 'RAW',
-      requestBody: { values: [[merchant, date, price]] },
-    });
+      insertDataOption: 'INSERT_ROWS',
+      resource: { values },
+      auth
+    };
 
-    return res.status(200).json({ merchant, date, price });
+    await sheets.spreadsheets.values.append(request);
+
+    res.status(200).json({ success: true });
+
   } catch (error) {
-    console.error('Error in /api/append:', error);
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('Google Sheets append error:', error);
+    res.status(500).json({ error: error.message });
   }
 }
