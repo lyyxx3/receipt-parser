@@ -1,26 +1,34 @@
-<main>
-  <h1>Receipt Parser</h1>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Receipt Parser</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <h1>Receipt Parser</h1>
 
-  <label for="fileInput" class="file-label">
-    📸 Select Receipt Image
-    <input type="file" id="fileInput" accept="image/*" />
-  </label>
+    <label for="fileInput" class="file-label">
+      📸 Select Receipt Image
+      <input type="file" id="fileInput" accept="image/*" />
+    </label>
 
-  <progress id="ocrProgress" max="1" value="0" style="display:none;"></progress>
+    <progress id="ocrProgress" max="1" value="0" style="display:none;"></progress>
 
-  <section>
-    <h2>OCR Raw Text</h2>
-    <pre id="ocrText" style="white-space: pre-wrap; background:#eee; padding:10px; max-height:200px; overflow-y:auto;"></pre>
-  </section>
+    <section id="parsed" style="display:none;">
+      <h2>Parsed Receipt Info</h2>
+      <p><strong>Merchant:</strong> <span id="est">Unknown</span></p>
+      <p><strong>Date:</strong> <span id="dt">Unknown</span></p>
+      <p><strong>Total Price:</strong> <span id="pr">Unknown</span></p>
+    </section>
 
-  <section id="parsed" style="display:none;">
-    <h2>Parsed Receipt Info</h2>
-    <p><strong>Merchant:</strong> <span id="est">Unknown</span></p>
-    <p><strong>Date:</strong> <span id="dt">Unknown</span></p>
-    <p><strong>Total Price:</strong> <span id="pr">Unknown</span></p>
-  </section>
+    <button id="saveBtn" disabled>Save to Google Sheet</button>
 
-  <button id="saveBtn" disabled>Save to Google Sheet</button>
+    <p id="status" class="status"></p>
+  </main>
 
-  <p id="status" class="status"></p>
-</main>
+  <script src="main.js"></script>
+</body>
+</html>
