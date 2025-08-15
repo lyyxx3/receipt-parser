@@ -9,6 +9,9 @@
 <body>
   <main>
     <h1>Receipt Parser</h1>
+    <p style="font-size: 0.9em; color: #666; margin-bottom: 1.5rem;">
+      Powered by Veryfi AI for accurate receipt recognition
+    </p>
 
     <label for="fileInput" class="file-label">
       📸 Select Receipt Image
@@ -16,12 +19,6 @@
     </label>
 
     <progress id="ocrProgress" max="1" value="0" style="display:none;"></progress>
-
-    <!--<section>
-      <h2>OCR Text</h2>
-      <pre id="ocrText" style="white-space: pre-wrap; background:#eee; padding:10px; max-height:200px; overflow-y:auto;"></pre>
-    </section>
-    -->
 
     <section id="parsed" style="display:none;">
       <h2>Parsed Receipt Info</h2>
@@ -35,7 +32,7 @@
     <p id="status" class="status"></p>
   </main>
   
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+  <!-- Removed Tesseract.js dependency -->
   <script src="main.js"></script>
 </body>
 </html>
