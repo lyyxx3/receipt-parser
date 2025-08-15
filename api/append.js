@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 
 export default async function handler(req, res) {
   // Add CORS headers
@@ -63,6 +64,11 @@ export default async function handler(req, res) {
     console.log('Uploading image to Google Drive...');
     const buffer = Buffer.from(imageBase64, 'base64');
     
+    // Convert buffer to readable stream
+    const bufferStream = new Readable();
+    bufferStream.push(buffer);
+    bufferStream.push(null); // End the stream
+    
     const fileMetadata = {
       name: `receipt-${Date.now()}.png`,
       ...(DRIVE_FOLDER_ID && { parents: [DRIVE_FOLDER_ID] })
@@ -70,7 +76,7 @@ export default async function handler(req, res) {
 
     const media = {
       mimeType: 'image/png',
-      body: buffer
+      body: bufferStream
     };
 
     const file = await drive.files.create({
