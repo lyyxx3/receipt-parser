@@ -10,6 +10,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let lastParsed = null;
 
+  // Parse receipt text to extract merchant, date, and price
+  function parseReceiptText(text) {
+    console.log('Raw OCR text:', text);
+    
+    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    let establishment = 'Unknown';
+    let date = 'Unknown';
+    let price = 'Unknown';
+
+    // Extract establishment (usually first few lines)
+    for (let i = 0; i < Math.min(5, lines.length); i++) {
+      const line = lines[i];
+      // Look for lines that don't contain numbers or common receipt words
+      if (line.length > 2 && 
+          !line.match(/^\d/) && 
+          !line.toLowerCase().includes('receipt') &&
+          !line.toLowerCase().includes('tel') &&
+          !line.toLowerCase().includes('phone') &&
+          !line.toLowerCase().includes('address')) {
+        establishment = line;
+        break;
+      }
+    }
+
+    // Extract date patterns
+    const datePatterns = [
+      /\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/g,
+      /\b(\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{2,4})\b/gi,
+      /\b((jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2},?\s+\d{2,4})\b/gi
+    ];
+    
+    for (const pattern of datePatterns) {
+      const matches = text.match(pattern);
+      if (matches && matches.length > 0) {
+        date = matches[0];
+        break;
+      }
+    }
+
+    // Extract price (look for total, amount, etc.)
+    const pricePatterns = [
+      /total[\s:]*\$?(\d+\.?\d*)/gi,
+      /amount[\s:]*\$?(\d+\.?\d*)/gi,
+      /\$(\d+\.?\d{2})/g,
+      /(\d+\.\d{2})$/gm
+    ];
+    
+    for (const pattern of pricePatterns) {
+      const matches = text.match(pattern);
+      if (matches && matches.length > 0) {
+        // Extract just the number part
+        const match = matches[0];
+        const numberMatch = match.match(/(\d+\.?\d*)/);
+        if (numberMatch) {
+          price = '$' + numberMatch[1];
+          break;
+        }
+      }
+    }
+
+    return { establishment, date, price };
+  }
+
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -61,6 +125,46 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       status.textContent = 'OCR failed: ' + err.message;
       ocrProgress.style.display = 'none';
+    }
+  });
+
+  // Save button event listener
+  saveBtn.addEventListener('click', async () => {
+    if (!lastParsed) {
+      status.textContent = 'No data to save!';
+      return;
+    }
+
+    saveBtn.disabled = true;
+    status.textContent = 'Saving to Google Sheet...';
+
+    try {
+      const response = await fetch('/api/append', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(lastParsed)
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        status.textContent = 'Successfully saved to Google Sheet!';
+        status.style.color = 'green';
+      } else {
+        throw new Error(result.error || 'Failed to save');
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      status.textContent = 'Save failed: ' + err.message;
+      status.style.color = 'red';
+    } finally {
+      saveBtn.disabled = false;
+      // Reset status color after 3 seconds
+      setTimeout(() => {
+        status.style.color = '';
+      }, 3000);
     }
   });
 });
