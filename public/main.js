@@ -10,79 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let lastParsed = null;
 
-  // Parse receipt text to extract merchant, date, and price
-  function parseReceiptText(text) {
-    console.log('Raw OCR text:', text);
-    
-    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-    
-    let establishment = 'Unknown';
-    let date = 'Unknown';
-    let price = 'Unknown';
-
-    // Extract establishment (usually first few lines)
-    for (let i = 0; i < Math.min(5, lines.length); i++) {
-      const line = lines[i];
-      // Look for lines that don't contain numbers or common receipt words
-      if (line.length > 2 && 
-          !line.match(/^\d/) && 
-          !line.toLowerCase().includes('receipt') &&
-          !line.toLowerCase().includes('tel') &&
-          !line.toLowerCase().includes('phone') &&
-          !line.toLowerCase().includes('address')) {
-        establishment = line;
-        break;
-      }
-    }
-
-    // Extract date patterns
-    const datePatterns = [
-      /\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/g,
-      /\b(\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{2,4})\b/gi,
-      /\b((jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2},?\s+\d{2,4})\b/gi
-    ];
-    
-    for (const pattern of datePatterns) {
-      const matches = text.match(pattern);
-      if (matches && matches.length > 0) {
-        date = matches[0];
-        break;
-      }
-    }
-
-    // Extract price (look for total, amount, etc.)
-    const pricePatterns = [
-      /total[\s:]*\$?(\d+\.?\d*)/gi,
-      /amount[\s:]*\$?(\d+\.?\d*)/gi,
-      /\$(\d+\.?\d{2})/g,
-      /(\d+\.\d{2})$/gm
-    ];
-    
-    for (const pattern of pricePatterns) {
-      const matches = text.match(pattern);
-      if (matches && matches.length > 0) {
-        // Extract just the number part
-        const match = matches[0];
-        const numberMatch = match.match(/(\d+\.?\d*)/);
-        if (numberMatch) {
-          price = '$' + numberMatch[1];
-          break;
-        }
-      }
-    }
-
-    return { establishment, date, price };
-  }
-
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
   
     parsed.style.display = 'none';
     saveBtn.disabled = true;
-    status.textContent = 'Running OCR... (this runs in your browser)';
+    status.textContent = 'Processing receipt with Veryfi AI...';
     ocrProgress.style.display = 'block';
-    ocrProgress.value = 0;
+    ocrProgress.value = 0.2; // Show some progress immediately
   
     try {
       // Convert file to base64
@@ -95,23 +31,49 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+
+      ocrProgress.value = 0.4;
+      status.textContent = 'Sending to Veryfi for processing...';
   
-      const { data: { text } } = await Tesseract.recognize(file, 'eng', {
-        logger: m => {
-          if (m.progress) ocrProgress.value = m.progress;
-        }
+      // Send to Veryfi API
+      const response = await fetch('/api/veryfi-ocr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageBase64 })
       });
-  
+
+      ocrProgress.value = 0.8;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Veryfi processing failed');
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error('Veryfi processing failed');
+      }
+
+      ocrProgress.value = 1.0;
       ocrProgress.style.display = 'none';
-  
-      const parsedFields = parseReceiptText(text);
-  
-      // Ensure imageBase64 is stored with parsed data
+
+      // Use Veryfi's parsed data
+      const veryfiData = result.data;
+      
+      // Store parsed data with imageBase64
       lastParsed = { 
-        establishment: parsedFields.establishment || 'Unknown',
-        date: parsedFields.date || 'Unknown',
-        price: parsedFields.price || 'Unknown',
-        imageBase64 
+        establishment: veryfiData.establishment || 'Unknown',
+        date: veryfiData.date || 'Unknown',
+        price: veryfiData.price || 'Unknown',
+        imageBase64,
+        // Store additional Veryfi data
+        confidence: veryfiData.confidence,
+        subtotal: veryfiData.subtotal,
+        tax: veryfiData.tax,
+        category: veryfiData.category
       };
   
       estEl.textContent = lastParsed.establishment;
@@ -120,11 +82,29 @@ document.addEventListener('DOMContentLoaded', () => {
   
       parsed.style.display = 'block';
       saveBtn.disabled = false;
-      status.textContent = 'Parsed. Review then tap "Save to Google Sheet".';
+      
+      // Show confidence if available
+      const confidenceText = veryfiData.confidence ? 
+        ` (Confidence: ${Math.round(veryfiData.confidence * 100)}%)` : '';
+      status.textContent = `Parsed successfully!${confidenceText} Review and save.`;
+      status.style.color = 'green';
+
+      // Log additional details for debugging
+      console.log('Veryfi parsing results:', veryfiData);
+      if (veryfiData.line_items && veryfiData.line_items.length > 0) {
+        console.log('Line items found:', veryfiData.line_items);
+      }
   
     } catch (err) {
-      status.textContent = 'OCR failed: ' + err.message;
+      console.error('Processing error:', err);
+      status.textContent = 'Processing failed: ' + err.message + '. Try with a clearer image.';
+      status.style.color = 'red';
       ocrProgress.style.display = 'none';
+      
+      // Reset color after 5 seconds
+      setTimeout(() => {
+        status.style.color = '';
+      }, 5000);
     }
   });
 
@@ -137,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     saveBtn.disabled = true;
     status.textContent = 'Saving to Google Sheet...';
+    status.style.color = '';
 
     try {
       const response = await fetch('/api/append', {
@@ -144,7 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(lastParsed)
+        body: JSON.stringify({
+          establishment: lastParsed.establishment,
+          date: lastParsed.date,
+          price: lastParsed.price,
+          imageBase64: lastParsed.imageBase64
+        })
       });
 
       const result = await response.json();
@@ -152,6 +138,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (response.ok && result.success) {
         status.textContent = 'Successfully saved to Google Sheet!';
         status.style.color = 'green';
+        
+        // Optional: Clear the form after successful save
+        setTimeout(() => {
+          fileInput.value = '';
+          parsed.style.display = 'none';
+          saveBtn.disabled = true;
+          lastParsed = null;
+        }, 2000);
       } else {
         throw new Error(result.error || 'Failed to save');
       }
