@@ -76,7 +76,7 @@ export default async function handler(req, res) {
       date: veryfiData.date || 
             veryfiData.document_date || 
             'Unknown',
-      price: veryfiData.total ? `$${veryfiData.total}` : 'Unknown',
+      price: veryfiData.total ? veryfiData.total.toString() : 'Unknown', // Remove $ sign
       rawText: veryfiData.ocr_text || '',
       confidence: veryfiData.confidence || 0,
       // Additional useful fields
