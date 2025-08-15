@@ -60,8 +60,14 @@ export default async function handler(req, res) {
     const drive = google.drive({ version: 'v3', auth });
     const sheets = google.sheets({ version: 'v4', auth });
 
+    if (!DRIVE_FOLDER_ID) {
+      return res.status(500).json({ 
+        error: 'GOOGLE_DRIVE_FOLDER_ID is required. Service accounts cannot store files without a specific folder.' 
+      });
+    }
+
     // Step 1: Upload image to Google Drive
-    console.log('Uploading image to Google Drive...');
+    console.log('Uploading image to Google Drive folder:', DRIVE_FOLDER_ID);
     const buffer = Buffer.from(imageBase64, 'base64');
     
     // Convert buffer to readable stream
@@ -71,7 +77,7 @@ export default async function handler(req, res) {
     
     const fileMetadata = {
       name: `receipt-${Date.now()}.png`,
-      ...(DRIVE_FOLDER_ID && { parents: [DRIVE_FOLDER_ID] })
+      parents: [DRIVE_FOLDER_ID]  // Always specify the parent folder
     };
 
     const media = {
